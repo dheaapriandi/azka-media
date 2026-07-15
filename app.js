@@ -26,6 +26,7 @@
   let tempSpareparts = [];
   let isListenersInitialized = false;
   let currentPreviewTrx = null;
+  let firebaseUnsubscribes = [];
 
   // Real-time synchronization from Firestore
   function initFirebaseListeners() {
@@ -33,7 +34,7 @@
     isListenersInitialized = true;
 
     // 1. Settings Listener
-    db.collection("settings").doc("shop").onSnapshot(doc => {
+    const unsub1 = db.collection("settings").doc("shop").onSnapshot(doc => {
       if (doc.exists) {
         state.settings = doc.data();
         updateShopBranding();
@@ -42,9 +43,10 @@
         db.collection("settings").doc("shop").set(window.INITIAL_DATA.settings);
       }
     });
+    firebaseUnsubscribes.push(unsub1);
 
     // 2. Products Listener
-    db.collection("products").onSnapshot(snapshot => {
+    const unsub2 = db.collection("products").onSnapshot(snapshot => {
       const prods = [];
       snapshot.forEach(doc => {
         prods.push({ id: doc.id, ...doc.data() });
@@ -63,9 +65,10 @@
         });
       }
     });
+    firebaseUnsubscribes.push(unsub2);
 
     // 3. Service Configurations Listener
-    db.collection("services").onSnapshot(snapshot => {
+    const unsub3 = db.collection("services").onSnapshot(snapshot => {
       const svcs = [];
       snapshot.forEach(doc => {
         svcs.push({ id: doc.id, ...doc.data() });
@@ -82,9 +85,10 @@
         });
       }
     });
+    firebaseUnsubscribes.push(unsub3);
 
     // 4. Transactions (Sales, Services, Printing) Listener
-    db.collection("transactions").onSnapshot(snapshot => {
+    const unsub4 = db.collection("transactions").onSnapshot(snapshot => {
       const trxs = [];
       snapshot.forEach(doc => {
         trxs.push({ id: doc.id, ...doc.data() });
@@ -112,15 +116,75 @@
         else if (id === 'view-reports') renderReports();
       }
     });
+    firebaseUnsubscribes.push(unsub4);
   }
 
-  // --- INITIALIZATION ---
+  // --- INITIALIZATION & AUTH ---
   document.addEventListener('DOMContentLoaded', () => {
-    initFirebaseListeners();
-    initApp();
     setupEventListeners();
-    renderActiveModule('dashboard');
+    setupAuthListener();
   });
+
+  function setupAuthListener() {
+    firebase.auth().onAuthStateChanged(user => {
+      const loginScreen = document.getElementById('login-screen');
+      const appContainer = document.querySelector('.app-container');
+
+      if (user) {
+        // User is logged in
+        loginScreen.style.display = 'none';
+        appContainer.style.display = 'flex';
+        
+        initFirebaseListeners();
+        initApp();
+      } else {
+        // User is logged out
+        loginScreen.style.display = 'flex';
+        appContainer.style.display = 'none';
+        
+        // Stop listening to Firebase Firestore to secure data
+        firebaseUnsubscribes.forEach(unsub => unsub());
+        firebaseUnsubscribes = [];
+        isListenersInitialized = false;
+      }
+    });
+  }
+
+  function handleLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    const btnSubmit = document.getElementById('btn-login-submit');
+
+    btnSubmit.disabled = true;
+    btnSubmit.textContent = "Memproses...";
+
+    firebase.auth().signInWithEmailAndPassword(email, password)
+      .then(() => {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = "Masuk ke Sistem";
+        document.getElementById('login-form').reset();
+      })
+      .catch(error => {
+        btnSubmit.disabled = false;
+        btnSubmit.textContent = "Masuk ke Sistem";
+        console.error("Login gagal: ", error);
+        alert("Login Gagal! Periksa kembali email dan password Anda.\nDetail: " + error.message);
+      });
+  }
+
+  function handleLogout() {
+    if (confirm("Apakah Anda yakin ingin keluar dari sistem?")) {
+      firebase.auth().signOut()
+        .then(() => {
+          alert("Anda telah berhasil keluar.");
+        })
+        .catch(err => {
+          console.error("Logout gagal: ", err);
+          alert("Gagal keluar dari sistem!");
+        });
+    }
+  }
 
   function initApp() {
     updateShopBranding();
@@ -232,6 +296,10 @@
     document.getElementById('receipt-layout-option').addEventListener('change', (e) => {
       renderReceiptContent(e.target.value);
     });
+
+    // Auth events
+    document.getElementById('login-form').addEventListener('submit', handleLogin);
+    document.getElementById('btn-logout').addEventListener('click', handleLogout);
 
     // Receipt print button
     document.getElementById('btn-print-receipt').addEventListener('click', triggerPhysicalPrint);
