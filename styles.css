@@ -1445,6 +1445,10 @@ body {
   margin: 0 auto 0.5rem auto;
 }
 
+.login-header {
+  text-align: center;
+}
+
 .login-header h2 {
   font-family: var(--font-display);
   font-size: 1.6rem;
